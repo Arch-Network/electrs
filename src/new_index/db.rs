@@ -23,7 +23,7 @@ pub struct ScanIterator<'a> {
     done: bool,
 }
 
-impl<'a> Iterator for ScanIterator<'a> {
+impl Iterator for ScanIterator<'_> {
     type Item = DBRow;
 
     fn next(&mut self) -> Option<DBRow> {
@@ -48,7 +48,7 @@ pub struct ReverseScanIterator<'a> {
     done: bool,
 }
 
-impl<'a> Iterator for ReverseScanIterator<'a> {
+impl Iterator for ReverseScanIterator<'_> {
     type Item = DBRow;
 
     fn next(&mut self) -> Option<DBRow> {
@@ -84,7 +84,7 @@ impl<'a> ReverseScanGroupIterator<'a> {
     pub fn new(
         mut iters: Vec<ReverseScanIterator<'a>>,
         value_offset: usize,
-    ) -> ReverseScanGroupIterator {
+    ) -> ReverseScanGroupIterator<'a> {
         let mut next_rows: Vec<Option<DBRow>> = Vec::with_capacity(iters.len());
         for iter in &mut iters {
             let next = iter.next();
@@ -100,7 +100,7 @@ impl<'a> ReverseScanGroupIterator<'a> {
     }
 }
 
-impl<'a> Iterator for ReverseScanGroupIterator<'a> {
+impl Iterator for ReverseScanGroupIterator<'_> {
     type Item = DBRow;
 
     fn next(&mut self) -> Option<DBRow> {

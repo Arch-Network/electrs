@@ -198,7 +198,7 @@ pub mod serde_hex {
     use serde::de::Error;
     use serde::{Deserializer, Serializer};
 
-    pub fn serialize<S: Serializer>(b: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(b: &[u8], s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&b.to_hex())
     }
 

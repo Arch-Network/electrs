@@ -203,9 +203,8 @@ impl HeaderList {
     }
 
     pub fn header_by_height(&self, height: usize) -> Option<&HeaderEntry> {
-        self.headers.get(height).map(|entry| {
+        self.headers.get(height).inspect(|entry| {
             assert_eq!(entry.height(), height);
-            entry
         })
     }
 
