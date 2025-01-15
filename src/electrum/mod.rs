@@ -1,5 +1,5 @@
 mod server;
-pub use server::RPC;
+pub use server::{NotificationUpdate, RPC};
 
 #[cfg(feature = "electrum-discovery")]
 mod client;

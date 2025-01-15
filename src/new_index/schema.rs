@@ -268,7 +268,7 @@ impl Indexer {
         Ok(result)
     }
 
-    pub fn update(&mut self, daemon: &Daemon) -> Result<BlockHash> {
+    pub fn update(&mut self, daemon: &Daemon) -> Result<(BlockHash, (Vec<Txid>, Vec<Txid>))> {
         let daemon = daemon.reconnect()?;
         let tip = daemon.getbestblockhash()?;
         let new_headers = self.get_new_headers(&daemon, &tip)?;
@@ -279,7 +279,7 @@ impl Indexer {
             to_add.len(),
             self.from
         );
-        start_fetcher(self.from, &daemon, to_add)?.map(|blocks| self.add(&blocks));
+        start_fetcher(self.from, &daemon, to_add.clone())?.map(|blocks| self.add(&blocks));
         self.start_auto_compactions(&self.store.txstore_db);
 
         let to_index = self.headers_to_index(&new_headers);
@@ -303,7 +303,7 @@ impl Indexer {
         self.store.txstore_db.put_sync(b"t", &serialize(&tip));
 
         let mut headers = self.store.indexed_headers.write().unwrap();
-        headers.apply(new_headers);
+        let removed = headers.apply(new_headers);
         assert_eq!(tip, *headers.tip());
 
         if let FetchFrom::BlkFiles = self.from {
@@ -312,7 +312,52 @@ impl Indexer {
 
         self.tip_metric.set(headers.len() as i64 - 1);
 
-        Ok(tip)
+        let updated_txns = self.find_new_and_replaced_txns(&daemon, &removed, &to_add);
+
+        Ok((tip, updated_txns))
+    }
+
+    fn find_new_and_replaced_txns(
+        &self,
+        daemon: &Daemon,
+        removed_headers: &[HeaderEntry],
+        added_headers: &[HeaderEntry],
+    ) -> (Vec<Txid>, Vec<Txid>) {
+        // Find all txns in the removed blocks.
+        // Find all txns in the added blocks.
+        // Return the txns that are in the removed blocks but not in the added blocks.
+        let removed_txns = removed_headers
+            .iter()
+            .filter_map(|h| self.get_block_txids(daemon, h.hash()))
+            .flatten()
+            .collect::<HashSet<_>>();
+        let added_txns = added_headers
+            .iter()
+            .filter_map(|h| self.get_block_txids(daemon, h.hash()))
+            .flatten()
+            .collect::<HashSet<_>>();
+
+        (
+            removed_txns.difference(&added_txns).cloned().collect(),
+            added_txns.difference(&removed_txns).cloned().collect(),
+        )
+    }
+
+    fn get_block_txids(&self, daemon: &Daemon, hash: &BlockHash) -> Option<HashSet<Txid>> {
+        let _timer = self.start_timer("get_block_txids");
+
+        if self.iconfig.light_mode {
+            // TODO fetch block as binary from REST API instead of as hex
+            let mut blockinfo = daemon.getblock_raw(hash, 1).ok()?;
+            Some(serde_json::from_value(blockinfo["tx"].take()).unwrap())
+        } else {
+            self.store
+                .txstore_db
+                .get(&BlockRow::txids_key(full_hash(&hash[..])))
+                .map(|val| {
+                    bincode_util::deserialize_little(&val).expect("failed to parse block txids")
+                })
+        }
     }
 
     fn add(&self, blocks: &[BlockEntry]) {

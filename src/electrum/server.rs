@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -114,12 +114,19 @@ impl JsonRpcV2Error {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+enum Event {
+    NewTxns,
+    ReplacedTxns,
+}
+
 struct Connection {
     query: Arc<Query>,
     last_header_entry: Option<HeaderEntry>,
     status_hashes: HashMap<Sha256dHash, Value>, // ScriptHash -> StatusHash
     stream: ConnectionStream,
     chan: SyncChannel<Message>,
+    subscribed_events: HashSet<Event>,
     stats: Arc<Stats>,
     txs_limit: usize,
     die_please: Option<Receiver<()>>,
@@ -142,6 +149,7 @@ impl Connection {
             status_hashes: HashMap::new(),
             stream,
             chan: SyncChannel::new(10),
+            subscribed_events: HashSet::new(),
             stats,
             txs_limit,
             die_please: Some(die_please),
@@ -156,6 +164,11 @@ impl Connection {
         let result = json!({"hex": hex_header, "height": entry.height()});
         self.last_header_entry = Some(entry);
         Ok(result)
+    }
+
+    fn event_subscribe(&mut self, event: Event) -> Result<Value> {
+        self.subscribed_events.insert(event);
+        Ok(json!(true))
     }
 
     fn server_version(&self) -> Result<Value> {
@@ -369,7 +382,14 @@ impl Connection {
         let tx = params.first().chain_err(|| "missing tx")?;
         let tx = tx.as_str().chain_err(|| "non-string tx")?.to_string();
         let txid = self.query.broadcast_raw(&tx)?;
-        if let Err(e) = self.chan.sender().try_send(Message::PeriodicUpdate) {
+        if let Err(e) = self
+            .chan
+            .sender()
+            .try_send(Message::PeriodicUpdate(NotificationUpdate {
+                new_txns: Some(vec![txid]),
+                replaced_txns: None,
+            }))
+        {
             warn!("failed to issue PeriodicUpdate after broadcast: {}", e);
         }
         Ok(json!(txid))
@@ -440,6 +460,8 @@ impl Connection {
             "blockchain.block.headers" => self.blockchain_block_headers(params),
             "blockchain.estimatefee" => self.blockchain_estimatefee(params),
             "blockchain.headers.subscribe" => self.blockchain_headers_subscribe(),
+            "blockchain.transaction.new" => self.event_subscribe(Event::NewTxns),
+            "blockchain.transaction.replaced" => self.event_subscribe(Event::ReplacedTxns),
             "blockchain.relayfee" => self.blockchain_relayfee(),
             #[cfg(not(feature = "liquid"))]
             "blockchain.scripthash.get_balance" => self.blockchain_scripthash_get_balance(params),
@@ -488,7 +510,7 @@ impl Connection {
         })
     }
 
-    fn update_subscriptions(&mut self) -> Result<Vec<Value>> {
+    fn update_subscriptions(&mut self, update: NotificationUpdate) -> Result<Vec<Value>> {
         let timer = self
             .stats
             .latency
@@ -520,6 +542,31 @@ impl Connection {
                 "params": [script_hash, new_status_hash]}));
             *status_hash = new_status_hash;
         }
+
+        for event in self.subscribed_events.iter() {
+            match event {
+                Event::NewTxns => {
+                    if let Some(new_txns) = update.new_txns.as_ref() {
+                        result.push(json!({
+                            "jsonrpc": "2.0",
+                            "method": "blockchain.transaction.new",
+                            "params": [new_txns]
+                        }));
+                    }
+                }
+                Event::ReplacedTxns => {
+                    if let Some(replaced_txns) = update.replaced_txns.as_ref() {
+                        result.push(json!({
+                            "jsonrpc": "2.0",
+                            "method": "blockchain.transaction.replaced",
+                            "params": [replaced_txns]
+                        }));
+                    }
+                }
+                _ => {}
+            }
+        }
+
         timer.observe_duration();
         Ok(result)
     }
@@ -545,9 +592,9 @@ impl Connection {
                             let result = self.handle_line(&line);
                             self.send_values(&[result])?
                         }
-                        Message::PeriodicUpdate => {
+                        Message::PeriodicUpdate(update) => {
                             let values = self
-                                .update_subscriptions()
+                                .update_subscriptions(update)
                                 .chain_err(|| "failed to update subscriptions")?;
                             self.send_values(&values)?
                         }
@@ -726,15 +773,21 @@ struct GetHistoryResult {
     fee: Option<u64>,
 }
 
+#[derive(Clone, Debug)]
+pub struct NotificationUpdate {
+    pub new_txns: Option<Vec<Txid>>,
+    pub replaced_txns: Option<Vec<Txid>>,
+}
+
 #[derive(Debug)]
 pub enum Message {
     Request(String),
-    PeriodicUpdate,
+    PeriodicUpdate(NotificationUpdate),
     Done,
 }
 
 pub enum Notification {
-    Periodic,
+    Periodic(NotificationUpdate),
     Exit,
 }
 
@@ -760,10 +813,10 @@ impl RPC {
             for msg in notification.receiver().iter() {
                 let mut senders = senders.lock().unwrap();
                 match msg {
-                    Notification::Periodic => {
+                    Notification::Periodic(update) => {
                         for sender in senders.split_off(0) {
                             if let Err(crossbeam_channel::TrySendError::Disconnected(_)) =
-                                sender.try_send(Message::PeriodicUpdate)
+                                sender.try_send(Message::PeriodicUpdate(update.clone()))
                             {
                                 continue;
                             }
@@ -932,8 +985,10 @@ impl RPC {
         }
     }
 
-    pub fn notify(&self) {
-        self.notification.send(Notification::Periodic).unwrap();
+    pub fn notify(&self, update: NotificationUpdate) {
+        self.notification
+            .send(Notification::Periodic(update))
+            .unwrap();
     }
 }
 

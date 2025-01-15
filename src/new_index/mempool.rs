@@ -390,7 +390,7 @@ impl Mempool {
         return HashSet::from_iter(self.txstore.keys().cloned());
     }
 
-    pub fn update(mempool: &RwLock<Mempool>, daemon: &Daemon) -> Result<()> {
+    pub fn update(mempool: &RwLock<Mempool>, daemon: &Daemon) -> Result<(Vec<Txid>, Vec<Txid>)> {
         // 1. Start the metrics timer and get the current mempool txids
         // [LOCK] Takes read lock for whole scope.
         let (_timer, old_txids) = {
@@ -412,7 +412,7 @@ impl Mempool {
         // 3. Remove missing transactions. Even if we are unable to download new transactions from
         // the daemon, we still want to remove the transactions that are no longer in the mempool.
         // [LOCK] Write lock is released at the end of the call to remove().
-        mempool.write().unwrap().remove(txids_to_remove);
+        mempool.write().unwrap().remove(txids_to_remove.clone());
 
         // 4. Download the new transactions from the daemon's mempool
         // [LOCK] No lock taken, waiting for RPC response.
@@ -445,7 +445,10 @@ impl Mempool {
                 mempool.backlog_stats = (BacklogStats::new(&mempool.feeinfo), Instant::now());
             }
 
-            Ok(())
+            Ok((
+                txids_to_remove.iter().map(|txid| (*txid).clone()).collect(),
+                txids_to_add.iter().map(|txid| (*txid).clone()).collect(),
+            ))
         }
     }
 

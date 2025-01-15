@@ -4,7 +4,10 @@ extern crate log;
 
 extern crate electrs;
 
+use bitcoin::Txid;
+use electrs::electrum::NotificationUpdate;
 use error_chain::ChainedError;
+use std::collections::HashSet;
 use std::process;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -61,7 +64,7 @@ fn run_server(config: Arc<Config>) -> Result<()> {
         &config,
         &metrics,
     );
-    let mut tip = indexer.update(&daemon)?;
+    let (mut tip, mut updated_txns) = indexer.update(&daemon)?;
 
     let chain = Arc::new(ChainQuery::new(
         Arc::clone(&store),
@@ -142,25 +145,68 @@ fn run_server(config: Arc<Config>) -> Result<()> {
 
         // Index new blocks
         let current_tip = daemon.getbestblockhash()?;
+        let mut update = NotificationUpdate {
+            new_txns: None,
+            replaced_txns: None,
+        };
+
         if current_tip != tip {
-            indexer.update(&daemon)?;
-            tip = current_tip;
+            let (new_tip, new_updated_txns) = indexer.update(&daemon)?;
+            tip = new_tip;
+            updated_txns = new_updated_txns;
         };
 
         // Update mempool
-        if let Err(e) = Mempool::update(&mempool, &daemon) {
-            // Log the error if the result is an Err
-            warn!(
-                "Error updating mempool, skipping mempool update: {}",
-                e.display_chain()
-            );
+        let mempool_update = Mempool::update(&mempool, &daemon);
+        match mempool_update {
+            Ok(mempool_txns) => {
+                updated_txns = find_new_and_replaced_txns(updated_txns, mempool_txns);
+            }
+            Err(e) => {
+                warn!(
+                    "Error updating mempool, skipping mempool update: {}",
+                    e.display_chain()
+                );
+            }
         }
 
+        update.new_txns = if updated_txns.0.is_empty() {
+            None
+        } else {
+            Some(updated_txns.0.clone())
+        };
+        update.replaced_txns = if updated_txns.1.is_empty() {
+            None
+        } else {
+            Some(updated_txns.1.clone())
+        };
+
         // Update subscribed clients
-        electrum_server.notify();
+        electrum_server.notify(update);
     }
     info!("server stopped");
     Ok(())
+}
+
+fn find_new_and_replaced_txns(
+    block_txns: (Vec<Txid>, Vec<Txid>),
+    mempool_txns: (Vec<Txid>, Vec<Txid>),
+) -> (Vec<Txid>, Vec<Txid>) {
+    let merged_removed: HashSet<Txid> = block_txns
+        .0
+        .into_iter()
+        .chain(mempool_txns.0.into_iter())
+        .collect();
+    let merged_added: HashSet<Txid> = block_txns
+        .1
+        .into_iter()
+        .chain(mempool_txns.1.into_iter())
+        .collect();
+
+    let removed_txns = merged_removed.difference(&merged_added).cloned().collect();
+    let added_txns = merged_added.difference(&merged_removed).cloned().collect();
+
+    (removed_txns, added_txns)
 }
 
 fn main() {
