@@ -170,12 +170,12 @@ fn run_server(config: Arc<Config>) -> Result<()> {
             }
         }
 
-        update.new_txns = if updated_txns.0.is_empty() {
+        update.replaced_txns = if updated_txns.0.is_empty() {
             None
         } else {
             Some(updated_txns.0.clone())
         };
-        update.replaced_txns = if updated_txns.1.is_empty() {
+        update.new_txns = if updated_txns.1.is_empty() {
             None
         } else {
             Some(updated_txns.1.clone())
