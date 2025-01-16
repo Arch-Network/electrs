@@ -146,9 +146,11 @@ fn run_server(config: Arc<Config>) -> Result<()> {
         // Index new blocks
         let current_tip = daemon.getbestblockhash()?;
         let mut update = NotificationUpdate {
-            new_txns: None,
-            replaced_txns: None,
+            new_txns: vec![],
+            replaced_txns: vec![],
         };
+
+        updated_txns = (vec![], vec![]);
 
         if current_tip != tip {
             let (new_tip, new_updated_txns) = indexer.update(&daemon)?;
@@ -170,16 +172,12 @@ fn run_server(config: Arc<Config>) -> Result<()> {
             }
         }
 
-        update.replaced_txns = if updated_txns.0.is_empty() {
-            None
-        } else {
-            Some(updated_txns.0.clone())
-        };
-        update.new_txns = if updated_txns.1.is_empty() {
-            None
-        } else {
-            Some(updated_txns.1.clone())
-        };
+        if !updated_txns.0.is_empty() {
+            info!("replaced txns: {:?}", updated_txns.0);
+        }
+
+        update.replaced_txns = updated_txns.0.clone();
+        update.new_txns = updated_txns.1.clone();
 
         // Update subscribed clients
         electrum_server.notify(update);

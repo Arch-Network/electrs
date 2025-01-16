@@ -386,8 +386,8 @@ impl Connection {
             .chan
             .sender()
             .try_send(Message::PeriodicUpdate(NotificationUpdate {
-                new_txns: Some(vec![txid]),
-                replaced_txns: None,
+                new_txns: vec![txid],
+                replaced_txns: vec![],
             }))
         {
             warn!("failed to issue PeriodicUpdate after broadcast: {}", e);
@@ -546,24 +546,23 @@ impl Connection {
         for event in self.subscribed_events.iter() {
             match event {
                 Event::NewTxns => {
-                    if let Some(new_txns) = update.new_txns.as_ref() {
+                    if !update.new_txns.is_empty() {
                         result.push(json!({
                             "jsonrpc": "2.0",
                             "method": "blockchain.transaction.new",
-                            "params": [new_txns]
+                            "params": [update.new_txns]
                         }));
                     }
                 }
                 Event::ReplacedTxns => {
-                    if let Some(replaced_txns) = update.replaced_txns.as_ref() {
+                    if !update.replaced_txns.is_empty() {
                         result.push(json!({
                             "jsonrpc": "2.0",
                             "method": "blockchain.transaction.replaced",
-                            "params": [replaced_txns]
+                            "params": [update.replaced_txns]
                         }));
                     }
                 }
-                _ => {}
             }
         }
 
@@ -775,8 +774,8 @@ struct GetHistoryResult {
 
 #[derive(Clone, Debug)]
 pub struct NotificationUpdate {
-    pub new_txns: Option<Vec<Txid>>,
-    pub replaced_txns: Option<Vec<Txid>>,
+    pub new_txns: Vec<Txid>,
+    pub replaced_txns: Vec<Txid>,
 }
 
 #[derive(Debug)]
