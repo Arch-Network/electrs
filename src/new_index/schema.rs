@@ -273,13 +273,24 @@ impl Indexer {
         let tip = daemon.getbestblockhash()?;
         let new_headers = self.get_new_headers(&daemon, &tip)?;
 
+        // Must rollback blocks before rolling forward
+        let (headers_len, reorged) = {
+            let mut headers = self.store.indexed_headers.write().unwrap();
+            let reorged = headers.apply(new_headers.clone());
+            assert_eq!(tip, *headers.tip());
+            let headers_len = headers.len();
+            drop(headers);
+
+            (headers_len, reorged)
+        };
+
         let to_add = self.headers_to_add(&new_headers);
         debug!(
             "adding transactions from {} blocks using {:?}",
             to_add.len(),
             self.from
         );
-        start_fetcher(self.from, &daemon, to_add.clone())?.map(|blocks| self.add(&blocks));
+        start_fetcher(self.from, &daemon, to_add)?.map(|blocks| self.add(&blocks));
         self.start_auto_compactions(&self.store.txstore_db);
 
         let to_index = self.headers_to_index(&new_headers);
@@ -288,7 +299,7 @@ impl Indexer {
             to_index.len(),
             self.from
         );
-        start_fetcher(self.from, &daemon, to_index)?.map(|blocks| self.index(&blocks));
+        start_fetcher(self.from, &daemon, to_index.clone())?.map(|blocks| self.index(&blocks));
         self.start_auto_compactions(&self.store.history_db);
 
         if let DBFlush::Disable = self.flush {
@@ -302,17 +313,13 @@ impl Indexer {
         debug!("updating synced tip to {:?}", tip);
         self.store.txstore_db.put_sync(b"t", &serialize(&tip));
 
-        let mut headers = self.store.indexed_headers.write().unwrap();
-        let removed = headers.apply(new_headers);
-        assert_eq!(tip, *headers.tip());
-
         if let FetchFrom::BlkFiles = self.from {
             self.from = FetchFrom::Bitcoind;
         }
 
-        self.tip_metric.set(headers.len() as i64 - 1);
+        self.tip_metric.set(headers_len as i64 - 1);
 
-        let updated_txns = self.find_new_and_replaced_txns(&daemon, &removed, &to_add);
+        let updated_txns = self.find_new_and_replaced_txns(&daemon, &reorged, &to_index);
 
         Ok((tip, updated_txns))
     }
@@ -336,6 +343,10 @@ impl Indexer {
             .filter_map(|h| self.get_block_txids(daemon, h.hash()))
             .flatten()
             .collect::<HashSet<_>>();
+        
+        if !removed_headers.is_empty() {
+            warn!("removed headers: {:?}", removed_headers);
+        }
 
         (
             removed_txns.difference(&added_txns).cloned().collect(),
