@@ -173,11 +173,11 @@ fn run_server(config: Arc<Config>) -> Result<()> {
         }
 
         if !updated_txns.1.is_empty() {
-            println!("new txns: {:?}", updated_txns.1);
+            info!("new txns: {:?}", updated_txns.1);
         }
 
         if !updated_txns.0.is_empty() {
-            println!("replaced txns: {:?}", updated_txns.0);
+            info!("replaced txns: {:?}", updated_txns.0);
         }
 
         update.replaced_txns = updated_txns.0.clone();
