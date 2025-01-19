@@ -37,7 +37,7 @@ use crate::new_index::fetch::{start_fetcher, BlockEntry, FetchFrom};
 #[cfg(feature = "liquid")]
 use crate::elements::{asset, peg};
 
-use super::db::ReverseScanGroupIterator;
+use super::{db::ReverseScanGroupIterator, transaction_update::TransactionChangeSet};
 
 const MIN_HISTORY_ITEMS_TO_CACHE: usize = 100;
 
@@ -268,7 +268,7 @@ impl Indexer {
         Ok(result)
     }
 
-    pub fn update(&mut self, daemon: &Daemon) -> Result<(BlockHash, (Vec<Txid>, Vec<Txid>))> {
+    pub fn update(&mut self, daemon: &Daemon) -> Result<(BlockHash, TransactionChangeSet)> {
         let daemon = daemon.reconnect()?;
         let tip = daemon.getbestblockhash()?;
         let new_headers = self.get_new_headers(&daemon, &tip)?;
@@ -319,17 +319,17 @@ impl Indexer {
 
         self.tip_metric.set(headers_len as i64 - 1);
 
-        let updated_txns = self.find_new_and_replaced_txns(&daemon, &reorged, &to_index);
+        let updated_txns = self.find_new_and_removed_txns(&daemon, &reorged, &to_index);
 
         Ok((tip, updated_txns))
     }
 
-    fn find_new_and_replaced_txns(
+    fn find_new_and_removed_txns(
         &self,
         daemon: &Daemon,
         removed_headers: &[HeaderEntry],
         added_headers: &[HeaderEntry],
-    ) -> (Vec<Txid>, Vec<Txid>) {
+    ) -> TransactionChangeSet {
         // Find all txns in the removed blocks.
         // Find all txns in the added blocks.
         // Return the txns that are in the removed blocks but not in the added blocks.
@@ -343,15 +343,15 @@ impl Indexer {
             .filter_map(|h| self.get_block_txids(daemon, h.hash()))
             .flatten()
             .collect::<HashSet<_>>();
-        
+
         if !removed_headers.is_empty() {
             warn!("removed headers: {:?}", removed_headers);
         }
 
-        (
-            removed_txns.difference(&added_txns).cloned().collect(),
-            added_txns.difference(&removed_txns).cloned().collect(),
-        )
+        TransactionChangeSet {
+            removed: removed_txns.difference(&added_txns).cloned().collect(),
+            added: added_txns.difference(&removed_txns).cloned().collect(),
+        }
     }
 
     fn get_block_txids(&self, daemon: &Daemon, hash: &BlockHash) -> Option<HashSet<Txid>> {

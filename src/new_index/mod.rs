@@ -4,6 +4,7 @@ mod mempool;
 pub mod precache;
 mod query;
 pub mod schema;
+pub mod transaction_update;
 
 pub use self::db::{DBRow, DB};
 pub use self::fetch::{BlockEntry, FetchFrom};

@@ -29,6 +29,7 @@ use crate::config::{Config, VERSION_STRING};
 use crate::electrum::{get_electrum_height, ProtocolVersion};
 use crate::errors::*;
 use crate::metrics::{Gauge, HistogramOpts, HistogramVec, MetricOpts, Metrics};
+use crate::new_index::transaction_update::TransactionChangeSet;
 use crate::new_index::{Query, Utxo};
 use crate::util::electrum_merkle::{get_header_merkle_proof, get_id_from_pos, get_tx_merkle_proof};
 use crate::util::{
@@ -776,6 +777,15 @@ struct GetHistoryResult {
 pub struct NotificationUpdate {
     pub new_txns: Vec<Txid>,
     pub replaced_txns: Vec<Txid>,
+}
+
+impl From<TransactionChangeSet> for NotificationUpdate {
+    fn from(change_set: TransactionChangeSet) -> Self {
+        NotificationUpdate {
+            new_txns: change_set.added.into_iter().collect(),
+            replaced_txns: change_set.removed.into_iter().collect(),
+        }
+    }
 }
 
 #[derive(Debug)]

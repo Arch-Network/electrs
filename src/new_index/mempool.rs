@@ -27,6 +27,8 @@ use crate::util::{extract_tx_prevouts, full_hash, has_prevout, is_spendable, Byt
 #[cfg(feature = "liquid")]
 use crate::elements::asset;
 
+use super::transaction_update::TransactionChangeSet;
+
 pub struct Mempool {
     chain: Arc<ChainQuery>,
     config: Arc<Config>,
@@ -390,7 +392,7 @@ impl Mempool {
         return HashSet::from_iter(self.txstore.keys().cloned());
     }
 
-    pub fn update(mempool: &RwLock<Mempool>, daemon: &Daemon) -> Result<(Vec<Txid>, Vec<Txid>)> {
+    pub fn update(mempool: &RwLock<Mempool>, daemon: &Daemon) -> Result<TransactionChangeSet> {
         // 1. Start the metrics timer and get the current mempool txids
         // [LOCK] Takes read lock for whole scope.
         let (_timer, old_txids) = {
@@ -445,10 +447,10 @@ impl Mempool {
                 mempool.backlog_stats = (BacklogStats::new(&mempool.feeinfo), Instant::now());
             }
 
-            Ok((
-                txids_to_remove.iter().map(|txid| (*txid).clone()).collect(),
-                txids_to_add.iter().map(|txid| (*txid).clone()).collect(),
-            ))
+            Ok(TransactionChangeSet {
+                removed: txids_to_remove.iter().map(|txid| (*txid).clone()).collect(),
+                added: txids_to_add.iter().map(|txid| (*txid).clone()).collect(),
+            })
         }
     }
 
