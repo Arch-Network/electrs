@@ -4,11 +4,8 @@ extern crate log;
 
 extern crate electrs;
 
-use bitcoin::Txid;
-use electrs::electrum::NotificationUpdate;
 use electrs::new_index::transaction_update::TransactionUpdate;
 use error_chain::ChainedError;
-use std::collections::HashSet;
 use std::process;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -168,7 +165,25 @@ fn run_server(config: Arc<Config>) -> Result<()> {
             }
         }
 
-        let final_update = transaction_update.categorize_into_two();
+        let categorized = transaction_update.categorize();
+
+        if !categorized.new_in_mempool_only.is_empty() {
+            warn!("new txns in mempool: {:?}", categorized.new_in_mempool_only);
+        }
+
+        if !categorized.new_block_only.is_empty() {
+            warn!("new txns straight from block: {:?}", categorized.new_block_only);
+        }
+
+        if !categorized.reorged_out_entirely.is_empty() {
+            warn!("txns reorged out entirely: {:?}", categorized.reorged_out_entirely);
+        }
+
+        if !categorized.mempool_rbf_or_evicted.is_empty() {
+            warn!("mempool rbf or evicted: {:?}", categorized.mempool_rbf_or_evicted);
+        }
+
+        let final_update = transaction_update.categorize_to_change_set();
         if !final_update.added.is_empty() {
             warn!("new txns: {:?}", final_update.added);
         }

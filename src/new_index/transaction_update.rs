@@ -163,7 +163,7 @@ impl TransactionUpdate {
     /// does *not* appear in these two sets.
     ///
     /// Returns `(newly_added, fully_removed)`.
-    pub fn categorize_into_two(&self) -> TransactionChangeSet {
+    pub fn categorize_to_change_set(&self) -> TransactionChangeSet {
         // We consider the union of `mempool_added` and `block_added` to be
         // “transactions that ended up in the system (mempool or chain) *now*”.
         //

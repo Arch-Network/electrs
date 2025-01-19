@@ -84,6 +84,8 @@ impl Query {
                 but failed to add to mempool-electrs Mempool cache: {e}"
             );
         }
+
+        warn!("broadcast_raw of {txid} succeeded to broadcast");
         Ok(txid)
     }
 
