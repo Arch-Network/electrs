@@ -23,7 +23,7 @@ pub struct ScanIterator<'a> {
     done: bool,
 }
 
-impl<'a> Iterator for ScanIterator<'a> {
+impl Iterator for ScanIterator<'_> {
     type Item = DBRow;
 
     fn next(&mut self) -> Option<DBRow> {
@@ -48,7 +48,7 @@ pub struct ReverseScanIterator<'a> {
     done: bool,
 }
 
-impl<'a> Iterator for ReverseScanIterator<'a> {
+impl Iterator for ReverseScanIterator<'_> {
     type Item = DBRow;
 
     fn next(&mut self) -> Option<DBRow> {
@@ -84,7 +84,7 @@ impl<'a> ReverseScanGroupIterator<'a> {
     pub fn new(
         mut iters: Vec<ReverseScanIterator<'a>>,
         value_offset: usize,
-    ) -> ReverseScanGroupIterator {
+    ) -> ReverseScanGroupIterator<'a> {
         let mut next_rows: Vec<Option<DBRow>> = Vec::with_capacity(iters.len());
         for iter in &mut iters {
             let next = iter.next();
@@ -100,7 +100,7 @@ impl<'a> ReverseScanGroupIterator<'a> {
     }
 }
 
-impl<'a> Iterator for ReverseScanGroupIterator<'a> {
+impl Iterator for ReverseScanGroupIterator<'_> {
     type Item = DBRow;
 
     fn next(&mut self) -> Option<DBRow> {
@@ -148,7 +148,7 @@ pub enum DBFlush {
 impl DB {
     pub fn open(path: &Path, config: &Config) -> DB {
         let db = DB {
-            db: open_raw_db(path),
+            db: open_raw_db(path, OpenMode::ReadWrite),
         };
         db.verify_compatibility(config);
         db
@@ -242,6 +242,15 @@ impl DB {
         self.db.write_opt(batch, &opts).unwrap();
     }
 
+    pub fn delete(&self, keys: Vec<Vec<u8>>) {
+        debug!("deleting {} rows from {:?}", keys.len(), self.db);
+        for key in keys {
+            let _ = self.db.delete(key).inspect_err(|err| {
+                warn!("Error while deleting DB row: {err}");
+            });
+        }
+    }
+
     pub fn flush(&self) {
         self.db.flush().unwrap();
     }
@@ -281,7 +290,17 @@ impl DB {
     }
 }
 
-pub fn open_raw_db<T: rocksdb::ThreadMode>(path: &Path) -> rocksdb::DBWithThreadMode<T> {
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum OpenMode {
+    ReadOnly,
+    ReadWrite,
+}
+
+pub fn open_raw_db<T: rocksdb::ThreadMode>(
+    path: &Path,
+    read_mode: OpenMode,
+) -> rocksdb::DBWithThreadMode<T> {
     debug!("opening DB at {:?}", path);
     let mut db_opts = rocksdb::Options::default();
     db_opts.create_if_missing(true);
@@ -299,5 +318,13 @@ pub fn open_raw_db<T: rocksdb::ThreadMode>(path: &Path) -> rocksdb::DBWithThread
     // let mut block_opts = rocksdb::BlockBasedOptions::default();
     // block_opts.set_block_size(???);
 
-    rocksdb::DBWithThreadMode::<T>::open(&db_opts, path).expect("failed to open RocksDB")
+    match read_mode {
+        OpenMode::ReadOnly => {
+            rocksdb::DBWithThreadMode::<T>::open_for_read_only(&db_opts, path, false)
+                .expect("failed to open RocksDB (READ ONLY)")
+        }
+        OpenMode::ReadWrite => {
+            rocksdb::DBWithThreadMode::<T>::open(&db_opts, path).expect("failed to open RocksDB")
+        }
+    }
 }

@@ -18,7 +18,10 @@ type DB = rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>;
 lazy_static! {
     static ref HISTORY_DB: DB = {
         let config = Config::from_args();
-        open_raw_db(&config.db_path.join("newindex").join("history"))
+        open_raw_db(
+            &config.db_path.join("newindex").join("history"),
+            electrs::new_index::db::OpenMode::ReadOnly,
+        )
     };
 }
 

@@ -33,8 +33,8 @@ runs:
         echo "toolchain=\"${RUST_TOOLCHAIN}\"" >> $GITHUB_OUTPUT
     - name: Install ${{ steps.gettoolchain.outputs.toolchain }} Rust toolchain
       id: toolchain
-      # Commit date is Sep 19, 2023
-      uses: dtolnay/rust-toolchain@439cf607258077187679211f12aa6f19af4a0af7
+      # Commit date is Nov 18, 2024
+      uses: dtolnay/rust-toolchain@315e265cd78dad1e1dcf3a5074f6d6c47029d5aa
       with:
         toolchain: ${{ steps.gettoolchain.outputs.toolchain }}
         targets: ${{ inputs.targets }}

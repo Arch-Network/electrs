@@ -155,6 +155,7 @@ impl HeaderList {
             .collect()
     }
 
+    /// Returns any rolled back blocks in order from old tip first and first block in the fork is last
     pub fn apply(&mut self, new_headers: Vec<HeaderEntry>) -> Vec<HeaderEntry> {
         // new_headers[i] -> new_headers[i - 1] (i.e. new_headers.last() is the tip)
         for i in 1..new_headers.len() {
@@ -190,7 +191,6 @@ impl HeaderList {
             self.headers.push(new_header);
             self.heights.insert(self.tip, height);
         }
-
         removed.reverse();
         removed
     }
@@ -206,9 +206,8 @@ impl HeaderList {
     }
 
     pub fn header_by_height(&self, height: usize) -> Option<&HeaderEntry> {
-        self.headers.get(height).map(|entry| {
+        self.headers.get(height).inspect(|entry| {
             assert_eq!(entry.height(), height);
-            entry
         })
     }
 

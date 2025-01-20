@@ -838,9 +838,7 @@ fn handle_request(
                 .get_block_txids(&hash)
                 .ok_or_else(|| HttpError::not_found("Block not found".to_string()))?;
 
-            let start_index = start_index
-                .map_or(0u32, |el| el.parse().unwrap_or(0))
-                .max(0u32) as usize;
+            let start_index = start_index.map_or(0u32, |el| el.parse().unwrap_or(0)) as usize;
             if start_index >= txids.len() {
                 bail!(HttpError::not_found("start index out of range".to_string()));
             } else if start_index % config.rest_default_chain_txs_per_page != 0 {

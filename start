@@ -88,7 +88,6 @@ POPULAR_SCRIPTS_FILE="${POPULAR_SCRIPTS_FOLDER}/popular-scripts.txt"
 # This function runs the job for generating the popular scripts text file for the precache arg
 generate_popular_scripts() {
 	mkdir -p "${POPULAR_SCRIPTS_FOLDER}"
-	rm -f "${POPULAR_SCRIPTS_FILE_RAW}" "${POPULAR_SCRIPTS_FILE}"
 
 	## Use nproc * 4 threads to generate the txt file (lots of iowait, so 2x~4x core count is ok)
 	## Only pick up addresses with 101 history events or more
@@ -107,8 +106,13 @@ generate_popular_scripts() {
 		--db-dir "${DB_FOLDER}" \
 		> "${POPULAR_SCRIPTS_FILE_RAW}"
 
-	## Sorted and deduplicated just in case
-	sort "${POPULAR_SCRIPTS_FILE_RAW}" | uniq > "${POPULAR_SCRIPTS_FILE}"
+	## Only overwrite the existing file if the popular-scripts cargo run succeeded
+	if [ "$?" = "0" ];then
+		## Sorted and deduplicated just in case
+		echo "Sorting popular scripts for final results..."
+		sort "${POPULAR_SCRIPTS_FILE_RAW}" | uniq > "${POPULAR_SCRIPTS_FILE}"
+	fi
+
 	rm "${POPULAR_SCRIPTS_FILE_RAW}"
 }
 
@@ -164,6 +168,26 @@ do
 		UTXOS_LIMIT=9000
 		ELECTRUM_TXS_LIMIT=9000
 		MAIN_LOOP_DELAY=14000
+	fi
+	if [ "${NODENAME}" = "node202" ] && [ "${LOCATION}" = "va1" ];then
+		UTXOS_LIMIT=9000
+		ELECTRUM_TXS_LIMIT=9000
+	fi
+	if [ "${NODENAME}" = "node203" ] && [ "${LOCATION}" = "va1" ];then
+		UTXOS_LIMIT=9000
+		ELECTRUM_TXS_LIMIT=9000
+	fi
+	if [ "${NODENAME}" = "node204" ] && [ "${LOCATION}" = "va1" ];then
+		UTXOS_LIMIT=9000
+		ELECTRUM_TXS_LIMIT=9000
+	fi
+	if [ "${NODENAME}" = "node205" ] && [ "${LOCATION}" = "va1" ];then
+		UTXOS_LIMIT=9000
+		ELECTRUM_TXS_LIMIT=9000
+	fi
+	if [ "${NODENAME}" = "node206" ] && [ "${LOCATION}" = "va1" ];then
+		UTXOS_LIMIT=9000
+		ELECTRUM_TXS_LIMIT=9000
 	fi
 	if [ "${NODENAME}" = "node213" ];then
 		UTXOS_LIMIT=9000

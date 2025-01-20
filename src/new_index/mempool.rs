@@ -389,7 +389,7 @@ impl Mempool {
     }
 
     pub fn unique_txids(&self) -> HashSet<Txid> {
-        return HashSet::from_iter(self.txstore.keys().cloned());
+        HashSet::from_iter(self.txstore.keys().cloned())
     }
 
     pub fn update(mempool: &RwLock<Mempool>, daemon: &Daemon) -> Result<TransactionChangeSet> {

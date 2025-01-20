@@ -11,7 +11,7 @@ use crate::chain::{BNetwork, BlockHash, Network, Txid};
 use crate::elements::peg::{get_pegin_data, get_pegout_data, PeginInfo, PegoutInfo};
 use crate::elements::registry::{AssetMeta, AssetRegistry};
 use crate::errors::*;
-use crate::new_index::schema::{TxHistoryInfo, TxHistoryKey, TxHistoryRow};
+use crate::new_index::schema::{Operation, TxHistoryInfo, TxHistoryKey, TxHistoryRow};
 use crate::new_index::{db::DBFlush, ChainQuery, DBRow, Mempool, Query};
 use crate::util::{bincode_util, full_hash, Bytes, FullHash, TransactionStatus, TxInput};
 
@@ -178,11 +178,17 @@ pub fn index_confirmed_tx_assets(
     network: Network,
     parent_network: BNetwork,
     rows: &mut Vec<DBRow>,
+    op: &Operation,
 ) {
     let (history, issuances) = index_tx_assets(tx, network, parent_network);
 
     rows.extend(history.into_iter().map(|(asset_id, info)| {
-        asset_history_row(&asset_id, confirmed_height, tx_position, info).into_row()
+        let history_row = asset_history_row(&asset_id, confirmed_height, tx_position, info);
+        if let Operation::DeleteBlocksWithHistory(tx) = op {
+            tx.send(history_row.key.hash)
+                .expect("unbounded channel won't fail");
+        }
+        history_row.into_row()
     }));
 
     // the initial issuance is kept twice: once in the history index under I<asset><height><txid:vin>,
