@@ -37,7 +37,10 @@ use crate::new_index::fetch::{start_fetcher, BlockEntry, FetchFrom};
 #[cfg(feature = "liquid")]
 use crate::elements::{asset, peg};
 
-use super::{db::ReverseScanGroupIterator, transaction_update::TransactionChangeSet, fetch::bitcoind_sequential_fetcher};
+use super::{
+    db::ReverseScanGroupIterator, fetch::bitcoind_sequential_fetcher,
+    transaction_update::TransactionChangeSet,
+};
 
 const MIN_HISTORY_ITEMS_TO_CACHE: usize = 100;
 
@@ -334,7 +337,7 @@ impl Indexer {
             if !reorged.is_empty() {
                 self.reorg(reorged.clone(), &daemon)?;
             }
-            
+
             (headers_len, reorged)
         };
 
@@ -354,7 +357,8 @@ impl Indexer {
             to_index.len(),
             self.from
         );
-        start_fetcher(self.from, &daemon, to_index.clone())?.map(|blocks| self.index(&blocks, Operation::AddBlocks));
+        start_fetcher(self.from, &daemon, to_index.clone())?
+            .map(|blocks| self.index(&blocks, Operation::AddBlocks));
         self.start_auto_compactions(&self.store.history_db);
 
         if let DBFlush::Disable = self.flush {

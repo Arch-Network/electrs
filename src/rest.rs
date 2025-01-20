@@ -723,7 +723,7 @@ fn handle_request(
         None => HashMap::new(),
     };
 
-    info!("handle {:?} {:?}", method, uri);
+    // info!("handle {:?} {:?}", method, uri);
     match (
         &method,
         path.first(),

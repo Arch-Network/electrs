@@ -6,6 +6,8 @@ extern crate electrs;
 
 use electrs::new_index::transaction_update::TransactionUpdate;
 use error_chain::ChainedError;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::process;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -38,6 +40,15 @@ fn fetch_from(config: &Config, store: &Store) -> FetchFrom {
         // faster, uses blk*.dat files (good for initial indexing)
         FetchFrom::BlkFiles
     }
+}
+
+fn append_to_file(filename: &str, data: &str) -> std::io::Result<()> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(filename)?;
+    writeln!(file, "{}", data)?;
+    Ok(())
 }
 
 fn run_server(config: Arc<Config>) -> Result<()> {
@@ -168,27 +179,71 @@ fn run_server(config: Arc<Config>) -> Result<()> {
         let categorized = transaction_update.categorize();
 
         if !categorized.new_in_mempool_only.is_empty() {
+            if let Err(e) = append_to_file(
+                "new_in_mempool_only.txt",
+                format!("{:?}", categorized.new_in_mempool_only).as_str(),
+            ) {
+                warn!("Failed to append to file: {}", e);
+            }
             warn!("new txns in mempool: {:?}", categorized.new_in_mempool_only);
         }
 
         if !categorized.new_block_only.is_empty() {
-            warn!("new txns straight from block: {:?}", categorized.new_block_only);
+            if let Err(e) = append_to_file(
+                "new_block_only.txt",
+                format!("{:?}", categorized.new_block_only).as_str(),
+            ) {
+                warn!("Failed to append to file: {}", e);
+            }
+            warn!(
+                "new txns straight from block: {:?}",
+                categorized.new_block_only
+            );
         }
 
         if !categorized.reorged_out_entirely.is_empty() {
-            warn!("txns reorged out entirely: {:?}", categorized.reorged_out_entirely);
+            if let Err(e) = append_to_file(
+                "reorged_out_entirely.txt",
+                format!("{:?}", categorized.reorged_out_entirely).as_str(),
+            ) {
+                warn!("Failed to append to file: {}", e);
+            }
+            warn!(
+                "txns reorged out entirely: {:?}",
+                categorized.reorged_out_entirely
+            );
         }
 
         if !categorized.mempool_rbf_or_evicted.is_empty() {
-            warn!("mempool rbf or evicted: {:?}", categorized.mempool_rbf_or_evicted);
+            if let Err(e) = append_to_file(
+                "mempool_rbf_or_evicted.txt",
+                format!("{:?}", categorized.mempool_rbf_or_evicted).as_str(),
+            ) {
+                warn!("Failed to append to file: {}", e);
+            }
+            warn!(
+                "mempool rbf or evicted: {:?}",
+                categorized.mempool_rbf_or_evicted
+            );
         }
 
         let final_update = transaction_update.categorize_to_change_set();
         if !final_update.added.is_empty() {
+            if let Err(e) =
+                append_to_file("new_txns.txt", format!("{:?}", final_update.added).as_str())
+            {
+                warn!("Failed to append to file: {}", e);
+            }
             warn!("new txns: {:?}", final_update.added);
         }
 
         if !final_update.removed.is_empty() {
+            if let Err(e) = append_to_file(
+                "replaced_txns.txt",
+                format!("{:?}", final_update.removed).as_str(),
+            ) {
+                warn!("Failed to append to file: {}", e);
+            }
             warn!("replaced txns: {:?}", final_update.removed);
         }
 
