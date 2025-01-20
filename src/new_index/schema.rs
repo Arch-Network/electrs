@@ -332,7 +332,7 @@ impl Indexer {
             drop(headers);
 
             if !reorged.is_empty() {
-                self.reorg(reorged, &daemon)?;
+                self.reorg(reorged.clone(), &daemon)?;
             }
             
             (headers_len, reorged)
