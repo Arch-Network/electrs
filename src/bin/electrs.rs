@@ -4,13 +4,14 @@ extern crate log;
 
 extern crate electrs;
 
+use chrono::{DateTime, Utc};
 use electrs::new_index::transaction_update::TransactionUpdate;
 use error_chain::ChainedError;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::process;
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use electrs::{
     config::Config,
@@ -43,11 +44,19 @@ fn fetch_from(config: &Config, store: &Store) -> FetchFrom {
 }
 
 fn append_to_file(filename: &str, data: &str) -> std::io::Result<()> {
+    let unix_timestamp = DateTime::<Utc>::from(SystemTime::now())
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(filename)?;
-    writeln!(file, "{}", data)?;
+    writeln!(
+        file,
+        "{}",
+        format!("[{:?}] {}", unix_timestamp, data).as_str()
+    )?;
     Ok(())
 }
 

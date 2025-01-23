@@ -1,8 +1,11 @@
+use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 
 use std::collections::{BTreeSet, HashMap};
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::chain::{Network, OutPoint, Transaction, TxOut, Txid};
 use crate::config::Config;
@@ -33,6 +36,23 @@ pub struct Query {
     cached_relayfee: RwLock<Option<f64>>,
     #[cfg(feature = "liquid")]
     asset_db: Option<Arc<RwLock<AssetRegistry>>>,
+}
+
+fn append_to_file(filename: &str, data: &str) -> std::io::Result<()> {
+    let unix_timestamp = DateTime::<Utc>::from(SystemTime::now())
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(filename)?;
+    writeln!(
+        file,
+        "{}",
+        format!("[{:?}] {}", unix_timestamp, data).as_str()
+    )?;
+    Ok(())
 }
 
 impl Query {
@@ -83,6 +103,10 @@ impl Query {
                 "broadcast_raw of {txid} succeeded to broadcast \
                 but failed to add to mempool-electrs Mempool cache: {e}"
             );
+        }
+
+        if let Err(e) = append_to_file("broadcast_raw.txt", format!("{:?}", txid).as_str()) {
+            warn!("Failed to append to file: {}", e);
         }
 
         warn!("broadcast_raw of {txid} succeeded to broadcast");
