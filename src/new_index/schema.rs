@@ -327,18 +327,21 @@ impl Indexer {
         let new_headers = self.get_new_headers(&daemon, &tip)?;
 
         // Must rollback blocks before rolling forward
-        let (headers_len, reorged) = {
+        let (headers_len, removed_txns) = {
             let mut headers = self.store.indexed_headers.write().unwrap();
             let reorged = headers.apply(new_headers.clone());
             assert_eq!(tip, *headers.tip());
             let headers_len = headers.len();
             drop(headers);
 
+            let removed_txns = self.find_transactions_in_blocks(&daemon, &reorged);
+            warn!("removed headers: {:?}", reorged);
+
             if !reorged.is_empty() {
-                self.reorg(reorged.clone(), &daemon)?;
+                self.reorg(reorged, &daemon)?;
             }
 
-            (headers_len, reorged)
+            (headers_len, removed_txns)
         };
 
         let to_add = self.headers_to_add(&new_headers);
@@ -378,39 +381,29 @@ impl Indexer {
 
         self.tip_metric.set(headers_len as i64 - 1);
 
-        let updated_txns = self.find_new_and_removed_txns(&daemon, &reorged, &to_index);
+        let added_txns = self.find_transactions_in_blocks(&daemon, &to_index);
 
-        Ok((tip, updated_txns))
+        Ok((
+            tip,
+            TransactionChangeSet {
+                removed: removed_txns.difference(&added_txns).cloned().collect(),
+                added: added_txns.difference(&removed_txns).cloned().collect(),
+            },
+        ))
     }
 
-    fn find_new_and_removed_txns(
+    fn find_transactions_in_blocks(
         &self,
         daemon: &Daemon,
-        removed_headers: &[HeaderEntry],
-        added_headers: &[HeaderEntry],
-    ) -> TransactionChangeSet {
-        // Find all txns in the removed blocks.
-        // Find all txns in the added blocks.
-        // Return the txns that are in the removed blocks but not in the added blocks.
-        let removed_txns = removed_headers
-            .iter()
-            .filter_map(|h| self.get_block_txids(daemon, h.hash()))
-            .flatten()
-            .collect::<HashSet<_>>();
-        let added_txns = added_headers
+        blocks: &[HeaderEntry],
+    ) -> HashSet<Txid> {
+        let txns = blocks
             .iter()
             .filter_map(|h| self.get_block_txids(daemon, h.hash()))
             .flatten()
             .collect::<HashSet<_>>();
 
-        if !removed_headers.is_empty() {
-            warn!("removed headers: {:?}", removed_headers);
-        }
-
-        TransactionChangeSet {
-            removed: removed_txns.difference(&added_txns).cloned().collect(),
-            added: added_txns.difference(&removed_txns).cloned().collect(),
-        }
+        txns
     }
 
     fn get_block_txids(&self, daemon: &Daemon, hash: &BlockHash) -> Option<HashSet<Txid>> {
