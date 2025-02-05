@@ -1,0 +1,46 @@
+version: '3.9'
+services:
+  mempool-electrs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      - bitcoind
+    ports:
+      - 50001:50001
+      - 3002:3002
+      - 60401:60401
+    entrypoint:
+      /bin/electrs
+    environment:
+      - RUST_BACKTRACE=full
+    command: |
+      --address-search
+      --db-dir /electrs
+      --network regtest
+      --cors '*'
+      --daemon-dir /var/lib/bitcoin-core
+      --main-loop-delay 0
+      -vv
+      --electrum-rpc-addr=0.0.0.0:60401
+      --http-addr=0.0.0.0:3002
+      --daemon-rpc-addr=bitcoind:18443
+    volumes:
+    - 'electrs_data:/electrs'
+    - 'btcd_data:/var/lib/bitcoin-core'
+  bitcoind:
+    image: bitcoin/bitcoin
+    volumes:
+      - 'btcd_data:/var/lib/bitcoin-core'
+    environment:
+      - BITCOIN_DATA=/var/lib/bitcoin-core
+    command: |
+      -regtest=1
+      -rpcallowip=0.0.0.0/0
+      -datadir=/var/lib/bitcoin-core
+      -rpcbind=bitcoind
+
+volumes:
+  electrs_data:
+  btcd_data:
