@@ -1,6 +1,6 @@
 version: '3.9'
 services:
-  mempool-electrs:
+  electrs:
     build:
       context: .
       dockerfile: Dockerfile
@@ -26,11 +26,14 @@ services:
       --electrum-rpc-addr=0.0.0.0:60401
       --http-addr=0.0.0.0:3002
       --daemon-rpc-addr=bitcoind:18443
+      --cookie bitcoin:bitcoinpass
     volumes:
     - 'electrs_data:/electrs'
     - 'btcd_data:/var/lib/bitcoin-core'
   bitcoind:
     image: bitcoin/bitcoin
+    ports:
+      - 18443:18443
     volumes:
       - 'btcd_data:/var/lib/bitcoin-core'
     environment:
@@ -40,7 +43,33 @@ services:
       -rpcallowip=0.0.0.0/0
       -datadir=/var/lib/bitcoin-core
       -rpcbind=bitcoind
+      -debug=rpc
+      -printtoconsole
+      -rpcauth=bitcoin:fdd4aa9e420497f24745c7f06d9f2661$26322984e7d07e2e40b8df79dce78eabe8c891c956a10a3e6ceaac7df4cfa9cb
+      -fallbackfee=0.00000001
+
+  auto-mining:
+    image: bitcoin/bitcoin
+    depends_on:
+      - bitcoind
+    volumes:
+      - 'btcd_data:/var/lib/bitcoin-core'
+    environment:
+      - BITCOIN_DATA=/var/lib/bitcoin-core
+    command: |
+      sh -c "alias bitcoin-cli='bitcoin-cli -rpcuser=bitcoin -rpcpassword=bitcoinpass -rpcconnect=bitcoind -rpcport=18443';
+        sleep 5;
+        bitcoin-cli loadwallet testwallet;
+        while true; do bitcoin-cli -regtest -generate 1; sleep 5; done"
 
 volumes:
   electrs_data:
   btcd_data:
+
+networks:
+  arch:
+    ipam:
+      driver: default # bridge
+      config:
+        - subnet: 172.19.0.0/24 # If you change the subnet, make sure to update the bootnode ip above.
+          gateway: 172.19.0.1
